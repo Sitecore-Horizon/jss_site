@@ -5,16 +5,22 @@ import Layout from 'src/Layout';
 import {
   SitecoreContext,
   ComponentPropsContext,
-  handleEditorFastRefresh,
+  StaticPath,
 } from '@sitecore-jss/sitecore-jss-nextjs';
+import { handleEditorFastRefresh } from '@sitecore-jss/sitecore-jss-nextjs/utils';
 import { SitecorePageProps } from 'lib/page-props';
 import { sitecorePagePropsFactory } from 'lib/page-props-factory';
-import { componentFactory } from 'temp/componentFactory';
+import { componentBuilder } from 'temp/componentBuilder';
 import { sitemapFetcher } from 'lib/sitemap-fetcher';
 
-const SitecorePage = ({ notFound, componentProps, layoutData }: SitecorePageProps): JSX.Element => {
+const SitecorePage = ({
+  notFound,
+  componentProps,
+  layoutData,
+  headLinks,
+}: SitecorePageProps): JSX.Element => {
   useEffect(() => {
-    // Since Sitecore editors do not support Fast Refresh, need to refresh EE chromes after Fast Refresh finished
+    // Since Sitecore editors do not support Fast Refresh, need to refresh editor chromes after Fast Refresh finished
     handleEditorFastRefresh();
   }, []);
 
@@ -23,10 +29,15 @@ const SitecorePage = ({ notFound, componentProps, layoutData }: SitecorePageProp
     return <NotFound />;
   }
 
+  const isEditing = layoutData.sitecore.context.pageEditing;
+
   return (
     <ComponentPropsContext value={componentProps}>
-      <SitecoreContext componentFactory={componentFactory} layoutData={layoutData}>
-        <Layout layoutData={layoutData} />
+      <SitecoreContext
+        componentFactory={componentBuilder.getComponentFactory({ isEditing })}
+        layoutData={layoutData}
+      >
+        <Layout layoutData={layoutData} headLinks={headLinks} />
       </SitecoreContext>
     </ComponentPropsContext>
   );
@@ -41,21 +52,26 @@ export const getStaticPaths: GetStaticPaths = async (context) => {
   // will be generated on request (development mode in this example).
   // Alternatively, the entire sitemap could be pre-rendered
   // ahead of time (non-development mode in this example).
-  // See https://nextjs.org/docs/basic-features/data-fetching#incremental-static-regeneration
+  // See https://nextjs.org/docs/basic-features/data-fetching/incremental-static-regeneration
+
+  let paths: StaticPath[] = [];
+  let fallback: boolean | 'blocking' = 'blocking';
 
   if (process.env.NODE_ENV !== 'development' && !process.env.DISABLE_SSG_FETCH) {
-    // Note: Next.js runs export in production mode
-    const paths = await sitemapFetcher.fetch(context);
+    try {
+      // Note: Next.js runs export in production mode
+      paths = await sitemapFetcher.fetch(context);
+    } catch (error) {
+      console.log('Error occurred while fetching static paths');
+      console.log(error);
+    }
 
-    return {
-      paths,
-      fallback: process.env.EXPORT_MODE ? false : 'blocking',
-    };
+    fallback = process.env.EXPORT_MODE ? false : fallback;
   }
 
   return {
-    paths: [],
-    fallback: 'blocking',
+    paths,
+    fallback,
   };
 };
 
